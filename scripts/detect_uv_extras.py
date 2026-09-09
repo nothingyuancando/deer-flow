@@ -8,12 +8,13 @@ Order of resolution:
    ``docker/dev-entrypoint.sh`` and in the production Docker image build via
    ``backend/Dockerfile``.
 2. Auto-detection from config.yaml — currently maps:
-   - database.backend == postgres        -> postgres
-   - checkpointer.type == postgres       -> postgres
-   - stream_bridge.type == redis         -> redis
-   - tools[].name == browser_navigate    -> browser
-   - sandbox.ownership.type == redis     -> redis
-   - channels.buzz.enabled == true       -> buzz
+    - database.backend == postgres        -> postgres
+    - checkpointer.type == postgres       -> postgres
+    - stream_bridge.type == redis         -> redis
+    - tools[].name == browser_navigate    -> browser
+    - sandbox.ownership.type == redis     -> redis
+    - channels.buzz.enabled == true       -> buzz
+    - models[].use == langchain_ollama:*  -> ollama
 3. Runtime environment toggles that enable optional backends:
    - DEER_FLOW_STREAM_BRIDGE_REDIS_URL   -> redis
    - DEER_FLOW_SANDBOX_OWNERSHIP_REDIS_URL -> redis
@@ -247,8 +248,53 @@ def tools_include_name(lines: list[str], tool_name: str) -> bool:
         indent = len(line) - len(stripped)
         if indent == 0:
             inside = False
-            continue
     return False
+
+
+# Map the module prefix of a model's `use: <module>:<class>` entry to the uv
+# extra that provides it. Adding a provider here is enough to teach
+# `make dev`/serve.sh sync to keep its dependency installed.
+_MODEL_USE_EXTRAS = {
+    "langchain_ollama": "ollama",
+}
+
+# Matches `use:` on either a list item (`- use: ...`) or an indented key
+# (`  use: ...`) line inside a top-level list section.
+_USE_VALUE_RE = re.compile(r"^\s*(?:-\s+)?use\s*:\s*(\S.*?)\s*$")
+
+
+def model_use_extras(lines: list[str]) -> list[str]:
+    """Return extras for model entries in the top-level `models:` list.
+
+    Model entries look like:
+        models:
+          - name: local-llama
+            use: langchain_ollama:ChatOllama
+    """
+    inside = False
+    extras: set[str] = set()
+    for raw in lines:
+        line = _strip_comment(raw)
+        if not line.strip():
+            continue
+        sect_match = _SECTION_RE.match(line)
+        if sect_match:
+            inside = sect_match.group(1) == "models"
+            continue
+        if not inside:
+            continue
+        use_match = _USE_VALUE_RE.match(line)
+        if use_match:
+            module = _unquote(use_match.group(1).strip()).split(":")[0]
+            extra = _MODEL_USE_EXTRAS.get(module)
+            if extra is not None:
+                extras.add(extra)
+            continue
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        if indent == 0:
+            inside = False
+    return sorted(extras)
 
 
 def detect_from_config(path: Path) -> list[str]:
@@ -272,6 +318,7 @@ def detect_from_config(path: Path) -> list[str]:
         extras.add("buzz")
     if tools_include_name(lines, "browser_navigate"):
         extras.add("browser")
+    extras.update(model_use_extras(lines))
     return sorted(extras)
 
 

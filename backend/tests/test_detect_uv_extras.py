@@ -229,6 +229,51 @@ def test_detect_from_config_combines_buzz_with_postgres(tmp_path):
     assert detect.detect_from_config(cfg) == ["buzz", "postgres"]
 
 
+def test_detect_from_config_ollama_via_model_use(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "models:\n  - name: local-llama\n    display_name: Local Llama\n    use: langchain_ollama:ChatOllama\n    model: llama3.1\n    api_base: http://localhost:11434\n",
+    )
+    assert detect.detect_from_config(cfg) == ["ollama"]
+
+
+def test_detect_from_config_ollama_use_with_quoted_value(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("models:\n  - name: local-llama\n    use: 'langchain_ollama:ChatOllama'\n")
+    assert detect.detect_from_config(cfg) == ["ollama"]
+
+
+def test_detect_from_config_openai_model_returns_no_ollama_extra(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("models:\n  - name: gpt\n    use: langchain_openai:ChatOpenAI\n")
+    assert detect.detect_from_config(cfg) == []
+
+
+def test_detect_from_config_ignores_commented_ollama_block(tmp_path):
+    """Mirrors the fully-commented Ollama example block in config.example.yaml."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "database:\n  backend: sqlite\n# models:\n#   - name: local-llama\n#     use: langchain_ollama:ChatOllama\n",
+    )
+    assert detect.detect_from_config(cfg) == []
+
+
+def test_detect_from_config_ignores_use_outside_models_section(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "tools:\n  - name: web_fetch\n    use: langchain_ollama:ChatOllama\n",
+    )
+    assert detect.detect_from_config(cfg) == []
+
+
+def test_detect_from_config_ollama_leaves_section_at_next_top_level(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "models:\n  - name: local-llama\n    use: langchain_ollama:ChatOllama\ndatabase:\n  backend: postgres\n",
+    )
+    assert detect.detect_from_config(cfg) == ["ollama", "postgres"]
+
+
 def test_detect_from_config_missing_file_returns_empty(tmp_path):
     assert detect.detect_from_config(tmp_path / "does-not-exist.yaml") == []
 
