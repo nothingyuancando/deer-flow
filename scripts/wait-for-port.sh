@@ -24,10 +24,15 @@ case "$PORT" in
         ;;
 esac
 
-if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+# Strip leading zeros as text before any integer comparison. Bash can reject a
+# digit-only argument larger than its integer range, making both tests below
+# false and allowing an invalid port into the probe loop.
+PORT_DECIMAL="${PORT#"${PORT%%[!0]*}"}"
+if [ -z "$PORT_DECIMAL" ] || [ "${#PORT_DECIMAL}" -gt 5 ] || [ "$PORT_DECIMAL" -gt 65535 ]; then
     echo "Port must be between 1 and 65535: $PORT" >&2
     exit 1
 fi
+PORT="$PORT_DECIMAL"
 
 elapsed=0
 interval=1

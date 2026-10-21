@@ -46,6 +46,10 @@ trimming its contents. Offline CLI coverage:
 
 ## Service Startup Contracts
 
+`wait-for-port.sh` strips leading zeros from a digit-only port before checking
+the 1–65535 range, so an integer-overflow argument never reaches a probe.
+Offline coverage lives in `backend/tests/test_wait_for_port_overflow.py`.
+
 Both launchers call `sandbox-mode.sh` via Bash; keep it Bash/awk-only.
 Dev passes `$PROJECT_ROOT/config.yaml`; prod passes `$DEER_FLOW_CONFIG_PATH`.
 For AIO, omitted/blank/empty-quoted/YAML-null URLs (including comments) select
