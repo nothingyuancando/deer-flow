@@ -1,0 +1,37 @@
+name: Coordination database diagnosis
+on:
+  push:
+    branches: [codex/8659-db-diagnosis]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.11.1'
+      - run: uv sync --group dev --extra postgres
+        working-directory: backend
+      - name: Diagnose recovery
+        working-directory: backend
+        env:
+          PYTHONPATH: /tmp:.
+        run: |
+          cat > /tmp/dbprobe.py <<'PROBE'
+          import logging
+          import sqlite3
+          from sqlalchemy import event
+          from sqlalchemy.engine import Engine
+          def pytest_configure(config):
+              print('SQLite version:', sqlite3.sqlite_version)
+              def report(context):
+                  logging.getLogger('dbprobe').error('Database error: %r; SQL: %s', context.original_exception, context.statement)
+              event.listen(Engine, 'handle_error', report)
+          PROBE
+          uv run --no-sync pytest -p dbprobe tests/test_extension_agent_runs.py -q --tb=short
