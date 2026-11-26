@@ -7,7 +7,24 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: deerflow
+          POSTGRES_PASSWORD: deerflow
+          POSTGRES_DB: deerflow_test
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      TEST_POSTGRES_URI: postgresql://deerflow:deerflow@localhost:5432/deerflow_test?sslmode=disable
+      DEERFLOW_TEST_WORKFLOW_POSTGRES: postgresql://deerflow:deerflow@localhost:5432/deerflow_test?sslmode=disable
+      DEDUPE_TEST_POSTGRES_URL: postgresql://deerflow:deerflow@localhost:5432/deerflow_test?sslmode=disable
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -34,4 +51,4 @@ jobs:
                   logging.getLogger('dbprobe').error('Database error: %r; SQL: %s', context.original_exception, context.statement)
               event.listen(Engine, 'handle_error', report)
           PROBE
-          uv run --no-sync pytest -p dbprobe tests/test_extension_agent_runs.py -q --tb=short
+          uv run --no-sync pytest -p dbprobe -m "not live and not bundled_extension and not benchmark" --ignore=tests/blocking_io --splits 6 --group 6 --splitting-algorithm least_duration --durations-path=.test_durations tests/ -x -q --tb=short
